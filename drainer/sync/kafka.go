@@ -33,6 +33,18 @@ var stallWriteSize = 90 * 1024 * 1024
 
 var _ Syncer = &KafkaSyncer{}
 
+// PartitionMode Kafka partition mode
+type PartitionMode byte
+
+const (
+	// PartitionFixed choose fixed partition 0
+	PartitionFixed PartitionMode = iota + 1
+	// PartitionBySchema choose partition by schema
+	PartitionBySchema
+	// PartitionByTable choose partition by table
+	PartitionByTable
+)
+
 // KafkaSyncer sync data to kafka
 type KafkaSyncer struct {
 	addr     []string
@@ -49,6 +61,19 @@ type KafkaSyncer struct {
 
 	shutdown chan struct{}
 	*baseSyncer
+
+	partitionMode PartitionMode
+}
+
+func partitionMode(mode string) PartitionMode {
+	switch strings.ToLower(mode) {
+	case "schema":
+		return PartitionBySchema
+	case "table":
+		return PartitionByTable
+	default:
+		return PartitionFixed
+	}
 }
 
 // newAsyncProducer will only be changed in unit test for mock
@@ -70,6 +95,7 @@ func NewKafka(cfg *DBConfig, tableInfoGetter translator.TableInfoGetter) (*Kafka
 		toBeAckCommitTS: make(map[int64]int),
 		shutdown:        make(chan struct{}),
 		baseSyncer:      newBaseSyncer(tableInfoGetter),
+		partitionMode:   partitionMode(cfg.KafkaPartitionMode),
 	}
 
 	config, err := util.NewSaramaConfig(cfg.KafkaVersion, "kafka.")
@@ -89,7 +115,11 @@ func NewKafka(cfg *DBConfig, tableInfoGetter translator.TableInfoGetter) (*Kafka
 	config.Metadata.Retry.Max = 10000
 	config.Metadata.Retry.Backoff = 500 * time.Millisecond
 
-	config.Producer.Partitioner = sarama.NewManualPartitioner
+	if executor.partitionMode == PartitionFixed {
+		config.Producer.Partitioner = sarama.NewManualPartitioner
+	} else {
+		config.Producer.Partitioner = sarama.NewReferenceHashPartitioner
+	}
 	config.Producer.MaxMessageBytes = 1 << 30
 	config.Producer.Return.Successes = true
 	config.Producer.RequiredAcks = sarama.WaitForAll
@@ -116,12 +146,60 @@ func (p *KafkaSyncer) Sync(item *Item) error {
 	if err != nil {
 		return errors.Trace(err)
 	}
+	switch p.partitionMode {
+	case PartitionFixed:
+		return errors.Trace(p.saveBinlog(slaveBinlog, item, nil))
+	case PartitionBySchema:
+		if slaveBinlog.Type == obinlog.BinlogType_DML {
+			return errors.Trace(p.syncDMLPartitionBySchema(slaveBinlog, item))
+		}
+		partitionKey := sarama.StringEncoder(*slaveBinlog.DdlData.SchemaName)
+		return errors.Trace(p.saveBinlog(slaveBinlog, item, partitionKey))
+	case PartitionByTable:
+		if slaveBinlog.Type == obinlog.BinlogType_DML {
+			return errors.Trace(p.syncDMLPartitionByTable(slaveBinlog, item))
+		}
+		partitionKey := sarama.StringEncoder(*slaveBinlog.DdlData.SchemaName + "." + *slaveBinlog.DdlData.TableName)
+		return errors.Trace(p.saveBinlog(slaveBinlog, item, partitionKey))
+	}
+	return errors.Errorf("Not supported partition mode: %v", p.partitionMode)
+}
 
-	err = p.saveBinlog(slaveBinlog, item)
-	if err != nil {
-		return errors.Trace(err)
+func (p *KafkaSyncer) syncDMLPartitionBySchema(binlog *obinlog.Binlog, item *Item) error {
+	tables := binlog.DmlData.Tables
+	if len(tables) == 1 {
+		return errors.Trace(p.saveBinlog(binlog, item, sarama.StringEncoder(*tables[0].SchemaName)))
 	}
 
+	tablesBySchema := make(map[string][]*obinlog.Table)
+	for _, table := range tables {
+		schemaName := *table.SchemaName
+		tablesBySchema[schemaName] = append(tablesBySchema[schemaName], table)
+	}
+
+	for schema, tables := range tablesBySchema {
+		binlog.DmlData.Tables = tables
+		if err := p.saveBinlog(binlog, item, sarama.StringEncoder(schema)); err != nil {
+			return errors.Trace(err)
+		}
+	}
+	return nil
+}
+
+func (p *KafkaSyncer) syncDMLPartitionByTable(binlog *obinlog.Binlog, item *Item) error {
+	tables := binlog.DmlData.Tables
+	if len(tables) == 1 {
+		table := tables[0]
+		return errors.Trace(p.saveBinlog(binlog, item, sarama.StringEncoder(*table.SchemaName+"."+*table.TableName)))
+	}
+
+	binlog.DmlData.Tables = make([]*obinlog.Table, 1)
+	for _, table := range tables {
+		binlog.DmlData.Tables[0] = table
+		if err := p.saveBinlog(binlog, item, sarama.StringEncoder(*table.SchemaName+"."+*table.TableName)); err != nil {
+			return errors.Trace(err)
+		}
+	}
 	return nil
 }
 
@@ -134,14 +212,14 @@ func (p *KafkaSyncer) Close() error {
 	return err
 }
 
-func (p *KafkaSyncer) saveBinlog(binlog *obinlog.Binlog, item *Item) error {
+func (p *KafkaSyncer) saveBinlog(binlog *obinlog.Binlog, item *Item, key sarama.Encoder) error {
 	// log.Debug("save binlog: ", binlog.String())
 	data, err := binlog.Marshal()
 	if err != nil {
 		return errors.Trace(err)
 	}
 
-	msg := &sarama.ProducerMessage{Topic: p.topic, Key: nil, Value: sarama.ByteEncoder(data), Partition: 0}
+	msg := &sarama.ProducerMessage{Topic: p.topic, Key: key, Value: sarama.ByteEncoder(data), Partition: 0}
 	msg.Metadata = item
 
 	waitResume := false

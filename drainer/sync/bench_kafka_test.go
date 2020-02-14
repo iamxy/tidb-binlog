@@ -96,7 +96,7 @@ func BenchmarkKafka(b *testing.B) {
 	}()
 
 	for i := 0; i < b.N; i++ {
-		err = syncer.saveBinlog(binlog, item)
+		err = syncer.saveBinlog(binlog, item, nil)
 		if err != nil {
 			b.Fatal(err)
 		}

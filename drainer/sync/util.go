@@ -36,11 +36,12 @@ type DBConfig struct {
 	BinlogFileDir           string           `toml:"dir" json:"dir"`
 	BinlogFileRetentionTime int              `toml:"retention-time" json:"retention-time"`
 
-	ZKAddrs          string `toml:"zookeeper-addrs" json:"zookeeper-addrs"`
-	KafkaAddrs       string `toml:"kafka-addrs" json:"kafka-addrs"`
-	KafkaVersion     string `toml:"kafka-version" json:"kafka-version"`
-	KafkaMaxMessages int    `toml:"kafka-max-messages" json:"kafka-max-messages"`
-	TopicName        string `toml:"topic-name" json:"topic-name"`
+	ZKAddrs            string `toml:"zookeeper-addrs" json:"zookeeper-addrs"`
+	KafkaAddrs         string `toml:"kafka-addrs" json:"kafka-addrs"`
+	KafkaVersion       string `toml:"kafka-version" json:"kafka-version"`
+	KafkaMaxMessages   int    `toml:"kafka-max-messages" json:"kafka-max-messages"`
+	TopicName          string `toml:"topic-name" json:"topic-name"`
+	KafkaPartitionMode string `toml:"kafka-partition-mode" json:"kafka-partition-mode"`
 	// get it from pd
 	ClusterID uint64 `toml:"-" json:"-"`
 }
