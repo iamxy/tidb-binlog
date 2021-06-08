@@ -57,6 +57,12 @@ func NewCheckPoint(cfg *Config) (CheckPoint, error) {
 		cp, err = newMysql(cfg)
 	case "file":
 		cp, err = NewFile(cfg.InitialCommitTS, cfg.CheckPointFile)
+	case "plugin":
+		if cfg.Db != nil {
+			cp, err = newMysql(cfg)
+		} else {
+			cp, err = NewFile(cfg.InitialCommitTS, cfg.CheckPointFile)
+		}
 	default:
 		err = errors.Errorf("unsupported checkpoint type %s", cfg.CheckpointType)
 	}
