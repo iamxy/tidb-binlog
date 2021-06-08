@@ -261,6 +261,8 @@ func (tr *testRunner) execSQLs(sqls []string) {
 func RunCase(src *sql.DB, dst *sql.DB, schema string) {
 	tr := &testRunner{src: src, dst: dst, schema: schema}
 
+	runFlowOverflowCases(tr)
+
 	runPKcases(tr)
 
 	tr.run(caseUpdateWhileAddingCol)
@@ -710,6 +712,16 @@ func runPKcases(tr *testRunner) {
 			tr.execSQLs([]string{"DROP TABLE pk"})
 		}
 	}
+}
+
+// check replication data with float overflow
+func runFlowOverflowCases(tr *testRunner) {
+	tr.run(func(src *sql.DB) {
+		mustExec(src, "CREATE TABLE overflow(a float)")
+		mustExec(src, "INSERT INTO overflow(a) values(power(2,128))")
+	})
+
+	tr.execSQLs([]string{"DROP TABLE overflow"})
 }
 
 func mustExec(db *sql.DB, sql string, args ...interface{}) {
