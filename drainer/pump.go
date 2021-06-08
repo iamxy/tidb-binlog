@@ -24,6 +24,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tidb-binlog/pkg/util"
 	"github.com/pingcap/tidb-binlog/pump"
+	"github.com/pingcap/tidb-binlog/pump/storage"
 	"github.com/pingcap/tidb/store/tikv/oracle"
 	pb "github.com/pingcap/tipb/go-binlog"
 	"go.uber.org/zap"
@@ -101,9 +102,11 @@ func (p *Pump) PullBinlog(pctx context.Context, last int64) chan MergeItem {
 	labelReceive := "receive binlog"
 	labelCreateConn := "create conn"
 	labelPaused := "pump paused"
+	labelBinlogGCed := "binlog purged"
 	pLog.Add(labelReceive, 10*time.Second)
 	pLog.Add(labelCreateConn, 10*time.Second)
 	pLog.Add(labelPaused, 30*time.Second)
+	pLog.Add(labelBinlogGCed, 30*time.Second)
 
 	ret := make(chan MergeItem, binlogChanSize)
 
@@ -119,6 +122,7 @@ func (p *Pump) PullBinlog(pctx context.Context, last int64) chan MergeItem {
 		}()
 
 		needReCreateConn := false
+		isBinlogPurged := false
 		for {
 			if atomic.LoadInt32(&p.isClosed) == 1 {
 				return
@@ -128,6 +132,16 @@ func (p *Pump) PullBinlog(pctx context.Context, last int64) chan MergeItem {
 				// this pump is paused, wait until it can pull binlog again
 				pLog.Print(labelPaused, func() {
 					p.logger.Debug("pump is paused")
+				})
+
+				time.Sleep(time.Second)
+				continue
+			}
+
+			if isBinlogPurged {
+				// some binlogs have been purged in pump, just print the log and wait to exit by user.
+				pLog.Print(labelBinlogGCed, func() {
+					p.logger.Error("some binlogs have been purged in pump")
 				})
 
 				time.Sleep(time.Second)
@@ -153,7 +167,13 @@ func (p *Pump) PullBinlog(pctx context.Context, last int64) chan MergeItem {
 					})
 				}
 
-				needReCreateConn = true
+				// Pump return binlog GCed error via gRPC response error.
+				if strings.Contains(err.Error(), storage.ErrRequestGCedBinlog.Error()) {
+					needReCreateConn = false // re-create connection will have no effect.
+					isBinlogPurged = true
+				} else {
+					needReCreateConn = true
+				}
 
 				time.Sleep(time.Second)
 				// TODO: add metric here

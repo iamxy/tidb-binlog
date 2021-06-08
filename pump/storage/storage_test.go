@@ -200,7 +200,7 @@ func (as *AppendSuit) TestCloseAndOpenAgain(c *check.C) {
 	populateBinlog(c, append, 128, 1)
 	time.Sleep(time.Millisecond * 100)
 
-	gcTS := append.gcTS
+	gcTS := append.gcTS.Load()
 	maxCommitTS := append.maxCommitTS
 	headPointer := append.headPointer
 	handlePointer := append.handlePointer
@@ -213,7 +213,7 @@ func (as *AppendSuit) TestCloseAndOpenAgain(c *check.C) {
 	append, err = NewAppend(append.dir, append.options)
 	c.Assert(err, check.IsNil)
 
-	c.Assert(gcTS, check.Equals, append.gcTS)
+	c.Assert(gcTS, check.Equals, append.gcTS.Load())
 	c.Assert(maxCommitTS, check.Equals, append.maxCommitTS)
 	c.Assert(headPointer, check.Equals, append.headPointer)
 	c.Assert(handlePointer, check.Equals, append.handlePointer)
@@ -241,7 +241,7 @@ func (as *AppendSuit) testWriteBinlogAndPullBack(c *check.C, prewriteValueSize i
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		values := appendStorage.PullCommitBinlog(ctx, 0)
+		values, errs := appendStorage.PullCommitBinlog(ctx, 0)
 
 		// pull the binlogs back and check sorted
 		var binlogs []*pb.Binlog
@@ -265,6 +265,7 @@ func (as *AppendSuit) testWriteBinlogAndPullBack(c *check.C, prewriteValueSize i
 		for i := 1; i < len(binlogs); i++ {
 			c.Assert(binlogs[i].CommitTs, check.Greater, binlogs[i-1].CommitTs)
 		}
+		c.Assert(errs, check.HasLen, 0)
 
 		cancel()
 	}
@@ -350,7 +351,7 @@ func (as *AppendSuit) TestReadWriteGCTS(c *check.C) {
 	append, err = NewAppend(append.dir, append.options)
 	c.Assert(err, check.IsNil)
 
-	c.Assert(append.gcTS, check.Equals, int64(100))
+	c.Assert(append.gcTS.Load(), check.Equals, int64(100))
 	append.Close()
 }
 

@@ -80,7 +80,7 @@ func benchmarkPull(b *testing.B, prewriteValueSize int, binlogNum int) {
 	runtime.GC()
 	b.ResetTimer()
 
-	pulller := append.PullCommitBinlog(context.Background(), 0)
+	pulller, errs := append.PullCommitBinlog(context.Background(), 0)
 
 	cnt := 0
 	for b := range pulller {
@@ -101,6 +101,9 @@ func benchmarkPull(b *testing.B, prewriteValueSize int, binlogNum int) {
 	// just count the prewriteValueSize
 	b.SetBytes(int64(prewriteValueSize))
 	b.ReportAllocs()
+	if len(errs) > 0 {
+		b.Fatalf("pull binlog got some errors")
+	}
 }
 
 func benchmarkWrite(b *testing.B, prewriteValueSize int, parallelism int, sync bool) {

@@ -290,18 +290,24 @@ func (s *Server) PullBinlogs(in *binlog.PullBinlogReq, stream binlog.Pump_PullBi
 	last := in.StartFrom.Offset
 
 	gcTS := s.storage.GetGCTS()
-	if last <= gcTS {
+	if last != 0 && last <= gcTS {
+		// if requested with 0, then send binlog from oldest but not GCed TS.
+		// simple check TS before read binlog, but more checks are still needed in storage.
 		log.Error("drainer request a purged binlog TS, some binlog events may be loss", zap.Int64("gc TS", gcTS), zap.Reflect("request", in))
+		return errors.Annotatef(storage.ErrRequestGCedBinlog, "requested TS %d, GC TS %d", last, gcTS)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	binlogs := s.storage.PullCommitBinlog(ctx, last)
+	binlogs, errs := s.storage.PullCommitBinlog(ctx, last)
 
 	for {
 		select {
 		case <-s.pullClose:
 			return nil
+		case err2 := <-errs:
+			log.Error("pull binlog failed", zap.Error(err2))
+			return err2
 		case data, ok := <-binlogs:
 			if !ok {
 				return nil
@@ -637,12 +643,14 @@ func (s *Server) detectDrainerCheckPoints(ctx context.Context, gcTS int64) {
 		}
 
 		if drainer.MaxCommitTS < gcTS {
-			log.Error("drainer's checkpoint is older than pump gc ts, some binlogs are purged",
+			log.Error("drainer's checkpoint is older than pump alert gc ts, some binlogs may be purged after alert time",
 				zap.String("drainer", drainer.NodeID),
-				zap.Int64("gc ts", gcTS),
+				zap.Int64("alert gc ts", gcTS),
 				zap.Int64("drainer checkpoint", drainer.MaxCommitTS),
+				zap.Duration("alert time", earlyAlertGC),
 			)
 			// will add test when binlog have failpoint
+			// NOTE: this metrics do not mean the binlogs have been purge, but mean some binlogs will be purge after alert time.
 			detectedDrainerBinlogPurged.WithLabelValues(drainer.NodeID).Inc()
 		}
 	}
