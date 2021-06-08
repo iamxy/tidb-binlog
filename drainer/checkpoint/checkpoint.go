@@ -53,7 +53,7 @@ func NewCheckPoint(cfg *Config) (CheckPoint, error) {
 		err error
 	)
 	switch cfg.CheckpointType {
-	case "mysql", "tidb":
+	case "mysql", "tidb", "_intercept":
 		cp, err = newMysql(cfg)
 	case "file":
 		cp, err = NewFile(cfg.InitialCommitTS, cfg.CheckPointFile)

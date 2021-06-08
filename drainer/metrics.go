@@ -101,7 +101,16 @@ var (
 			Subsystem: "drainer",
 			Name:      "binlog_reach_duration_time",
 			Help:      "Bucketed histogram of how long the binlog take to reach drainer since it's committed",
-			Buckets:   prometheus.ExponentialBuckets(0.00005, 2, 18),
+			Buckets:   prometheus.ExponentialBuckets(0.00005, 2, 30),
+		}, []string{"nodeID"})
+
+	binlogRecvDurationHistogram = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "binlog",
+			Subsystem: "drainer",
+			Name:      "binlog_recv_duration_time",
+			Help:      "Bucketed histogram of how long the binlog take to receive",
+			Buckets:   prometheus.ExponentialBuckets(0.00005, 2, 30),
 		}, []string{"nodeID"})
 
 	readBinlogSizeHistogram = prometheus.NewHistogramVec(
@@ -110,7 +119,7 @@ var (
 			Subsystem: "drainer",
 			Name:      "read_binlog_size",
 			Help:      "Bucketed histogram of size of a binlog.",
-			Buckets:   prometheus.ExponentialBuckets(16, 2, 25),
+			Buckets:   prometheus.ExponentialBuckets(16, 2, 30),
 		}, []string{"nodeID"})
 
 	queueSizeGauge = prometheus.NewGaugeVec(
@@ -137,6 +146,7 @@ func init() {
 	registry.MustRegister(eventCounter)
 	registry.MustRegister(executeHistogram)
 	registry.MustRegister(binlogReachDurationHistogram)
+	registry.MustRegister(binlogRecvDurationHistogram)
 	registry.MustRegister(readBinlogSizeHistogram)
 	registry.MustRegister(queryHistogramVec)
 	registry.MustRegister(queueSizeGauge)

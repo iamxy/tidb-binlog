@@ -620,7 +620,7 @@ func (s *interceptSyncer) SetSafeMode(mode bool) bool {
 }
 
 func (s *interceptSyncer) Sync(item *dsync.Item) error {
-	s.items = append(s.items, item)
+	//s.items = append(s.items, item)
 
 	s.successes <- item
 	return nil

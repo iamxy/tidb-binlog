@@ -145,6 +145,7 @@ func (p *Pump) PullBinlog(pctx context.Context, last int64) chan MergeItem {
 				needReCreateConn = false
 			}
 
+			recvBeginTime := time.Now()
 			resp, err := p.pullCli.Recv()
 			if err != nil {
 				if status.Code(err) != codes.Canceled {
@@ -159,6 +160,7 @@ func (p *Pump) PullBinlog(pctx context.Context, last int64) chan MergeItem {
 				// TODO: add metric here
 				continue
 			}
+			binlogRecvDurationHistogram.WithLabelValues(p.nodeID).Observe(time.Since(recvBeginTime).Seconds())
 
 			payloadSize := len(resp.Entity.Payload)
 			readBinlogSizeHistogram.WithLabelValues(p.nodeID).Observe(float64(payloadSize))
