@@ -39,12 +39,14 @@ type DBConfig struct {
 
 	Merge bool `toml:"merge" json:"merge"`
 
-	ZKAddrs          string `toml:"zookeeper-addrs" json:"zookeeper-addrs"`
-	KafkaAddrs       string `toml:"kafka-addrs" json:"kafka-addrs"`
-	KafkaVersion     string `toml:"kafka-version" json:"kafka-version"`
-	KafkaMaxMessages int    `toml:"kafka-max-messages" json:"kafka-max-messages"`
-	KafkaClientID    string `toml:"kafka-client-id" json:"kafka-client-id"`
-	TopicName        string `toml:"topic-name" json:"topic-name"`
+	ZKAddrs             string `toml:"zookeeper-addrs" json:"zookeeper-addrs"`
+	KafkaAddrs          string `toml:"kafka-addrs" json:"kafka-addrs"`
+	KafkaVersion        string `toml:"kafka-version" json:"kafka-version"`
+	KafkaMaxMessages    int    `toml:"kafka-max-messages" json:"kafka-max-messages"`
+	KafkaClientID       string `toml:"kafka-client-id" json:"kafka-client-id"`
+	KafkaMaxMessageSize int    `toml:"kafka-max-message-size" json:"kafka-max-message-size"`
+	TopicName           string `toml:"topic-name" json:"topic-name"`
+
 	// get it from pd
 	ClusterID uint64 `toml:"-" json:"-"`
 }
