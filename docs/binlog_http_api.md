@@ -158,7 +158,7 @@
    ```
    
    ```shell
-   $curl http://127.0.0.1:8249/status
+   curl http://{DrainerIP}:8249/commit_ts
    
     {
       "message": "get drainer's latest ts success!",
